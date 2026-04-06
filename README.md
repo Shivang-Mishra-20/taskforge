@@ -1,3 +1,13 @@
+---
+title: Task Forge AI
+emoji: 🔧
+colorFrom: blue
+colorTo: green
+sdk: docker
+app_port: 7860
+tags: [openenv, rl, saas, operations]
+---
+
 # Task Forge AI 🔧
 
 **A Real-Time SaaS Operations RL Environment — OpenEnv Hackathon Submission**
