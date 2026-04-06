@@ -56,8 +56,8 @@ class ResetRequest(BaseModel):
 
 
 class StepRequest(BaseModel):
-    action_type: str
-    task_id: str
+    action_type: str = "start_task"
+    task_id: str = "T001"
     new_priority: Optional[int] = None
 
 
@@ -94,17 +94,19 @@ def health():
 
 
 @app.post("/reset")
-def reset(req: ResetRequest):
+def reset(req: Optional[ResetRequest] = None):
     """Reset environment to initial state. Returns first observation."""
     global _env
-    if req.scenario not in ("easy", "medium", "hard"):
-        raise HTTPException(400, f"scenario must be easy/medium/hard, got {req.scenario!r}")
-    _env = TaskForgeEnv(scenario=req.scenario, seed=req.seed)
+    scenario = req.scenario if req else "easy"
+    seed = req.seed if req else 42
+    if scenario not in ("easy", "medium", "hard"):
+        scenario = "easy"
+    _env = TaskForgeEnv(scenario=scenario, seed=seed)
     obs = _env.reset()
     return {
         "observation": obs.model_dump(),
-        "scenario": req.scenario,
-        "seed": req.seed,
+        "scenario": scenario,
+        "seed": seed,
     }
 
 
