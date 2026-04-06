@@ -37,9 +37,9 @@ from environment.models import Action, ActionType, Observation, Task, TaskStatus
 
 # ─── Config (from env vars, exactly as required) ─────────────────────────────
 
-API_BASE_URL   = os.environ.get("API_BASE_URL", "")
+API_BASE_URL   = os.environ.get("API_BASE_URL", "https://api.openai.com/v1")
 MODEL_NAME     = os.environ.get("MODEL_NAME", "gpt-4o-mini")
-HF_TOKEN       = os.environ.get("HF_TOKEN", "")
+HF_TOKEN       = os.environ.get("HF_TOKEN")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 
 USE_API = bool(OPENAI_API_KEY or HF_TOKEN) and bool(API_BASE_URL)
