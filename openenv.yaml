@@ -1,0 +1,187 @@
+name: task-forge-ai
+version: "1.0.0"
+description: >
+  Task Forge AI is a real-time SaaS Operations RL environment where an agent
+  acts as an operations manager handling bugs, customer issues, feature requests,
+  escalations, and deadlines across a simulated 8-hour workday.
+author: "Task Forge Team"
+license: MIT
+tags: [saas, operations, scheduling, rl, multi-task]
+
+# ─── Environment metadata ─────────────────────────────────────────────────────
+environment:
+  class: TaskForgeEnv
+  module: environment.env
+  max_steps: 200
+  time_limit_minutes: 480   # 8-hour simulated workday
+  scenarios:
+    - name: easy
+      description: "5 tasks, no dependencies, low conflict"
+    - name: medium
+      description: "7 tasks, dependency chains, deadline conflicts"
+    - name: hard
+      description: "8+ tasks, dynamic events, stochastic delegation, cascading failures"
+
+# ─── Observation space ────────────────────────────────────────────────────────
+observation_space:
+  type: dict
+  fields:
+    current_time:
+      type: float
+      description: "Current simulation time in minutes (0–480)"
+    time_remaining:
+      type: float
+      description: "Minutes remaining in workday"
+    task_list:
+      type: array
+      items:
+        type: object
+        fields:
+          id:          {type: string}
+          type:        {type: string, enum: [bug, support, sales, internal, feature]}
+          priority:    {type: integer, min: 1, max: 5}
+          deadline:    {type: float, description: "Minutes from simulation start"}
+          estimated_time: {type: float}
+          customer_impact: {type: float, min: 0.0, max: 1.0}
+          revenue_impact:  {type: float, min: 0.0, max: 1.0}
+          dependencies:    {type: array, items: {type: string}}
+          status:
+            type: string
+            enum: [pending, in_progress, delegated, completed, failed, delayed, dropped]
+          escalation_level: {type: integer, min: 0, max: 3}
+          description:      {type: string}
+    customer_satisfaction:
+      type: float
+      min: 0.0
+      max: 1.0
+    team_capacity:
+      type: float
+      min: 0.0
+      max: 1.0
+    active_escalations:
+      type: integer
+    completed_tasks:
+      type: integer
+    missed_deadlines:
+      type: integer
+    cumulative_reward:
+      type: float
+    episode_step:
+      type: integer
+    dynamic_event:
+      type: string
+      nullable: true
+
+# ─── Action space ─────────────────────────────────────────────────────────────
+action_space:
+  type: dict
+  fields:
+    action_type:
+      type: string
+      enum: [start_task, delegate_task, delay_task, drop_task, reprioritize]
+    task_id:
+      type: string
+      description: "ID of the task to act on"
+    new_priority:
+      type: integer
+      nullable: true
+      min: 1
+      max: 5
+      description: "Only required for reprioritize action"
+
+# ─── Reward ────────────────────────────────────────────────────────────────────
+reward:
+  type: float
+  range: [-1.0, 1.0]
+  normalized_range: [0.0, 1.0]
+  dense: true
+  components:
+    task_completion:     "Reward for starting/completing important tasks"
+    deadline_bonus:      "Bonus for completing tasks before deadline"
+    customer_impact_bonus: "Bonus for resolving high-impact customer tasks"
+    escalation_penalty:  "Penalty for ignoring escalated tasks"
+    missed_deadline_penalty: "Penalty for each missed deadline"
+    delegation_penalty:  "Penalty for failed delegation attempts"
+    inefficiency_penalty: "Penalty for low-priority work during crises"
+    early_termination_penalty: "Hard penalty for early episode end"
+
+# ─── Tasks / Graders ──────────────────────────────────────────────────────────
+tasks:
+  - id: easy
+    name: "Morning Triage"
+    difficulty: easy
+    description: >
+      Agent must handle 5 tasks including a critical login bug (priority 5, escalation 1)
+      and a sales demo (priority 4) before their respective deadlines.
+      No dependency chains. Minimal conflicts.
+    initial_tasks: 5
+    grader: grade_easy
+    pass_threshold: 0.60
+    key_objectives:
+      - "Complete T001 (critical bug) before 120 min deadline"
+      - "Complete T004 (sales demo) before 180 min deadline"
+      - "Maintain customer satisfaction > 0.7"
+
+  - id: medium
+    name: "Payment Crisis"
+    difficulty: medium
+    description: >
+      Agent faces a payment processing outage (M001) that blocks email confirmations (M002).
+      Simultaneously must retain a VIP customer (M003) and close a $500K contract (M004).
+      Dependency chains and deadline conflicts make sequencing critical.
+    initial_tasks: 7
+    grader: grade_medium
+    pass_threshold: 0.55
+    key_objectives:
+      - "Fix M001 (payment bug) first — it blocks M002"
+      - "Respond to VIP customer M003 within deadline"
+      - "Close contract M004 before legal deadline"
+      - "Respect dependency chain M001→M002→M005"
+
+  - id: hard
+    name: "Total Outage"
+    difficulty: hard
+    description: >
+      A complete data outage (H001, esc=3) affects all customers. Dynamic events inject
+      new tasks mid-episode. Delegation has 50% failure rate. Cascading failures from
+      H001 create dependencies for H002, H005, H006, H007. Board demo in 2hrs (H004).
+    initial_tasks: 8
+    dynamic_events: 3
+    grader: grade_hard
+    pass_threshold: 0.45
+    key_objectives:
+      - "Start/delegate H001 (critical outage) immediately"
+      - "Handle H003 (mass support triage) within 60 min"
+      - "Protect board demo H004 before 120 min"
+      - "Respond to SLA breach H008 to avoid penalty"
+      - "Handle dynamic events when injected"
+
+# ─── Inference ────────────────────────────────────────────────────────────────
+inference:
+  script: inference.py
+  logging:
+    format: "json"
+    events: ["[START]", "[STEP]", "[END]"]
+  free_mode:
+    enabled: true
+    agent: RuleBasedAgent
+    requires_api_key: false
+  api_mode:
+    env_vars:
+      - API_BASE_URL
+      - MODEL_NAME
+      - OPENAI_API_KEY
+    compatible_endpoints:
+      - "OpenAI API"
+      - "Anthropic Claude (via proxy)"
+      - "Ollama local"
+      - "Hugging Face TGI"
+
+# ─── Deployment ───────────────────────────────────────────────────────────────
+deployment:
+  platform: huggingface_spaces
+  sdk: docker
+  hardware:
+    vcpu: 2
+    ram_gb: 8
+  runtime_limit_minutes: 20
