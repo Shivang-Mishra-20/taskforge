@@ -29,6 +29,18 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from environment.env import TaskForgeEnv
 from environment.models import Action, ActionType
 
+
+# ─── Score safety ─────────────────────────────────────────────────────────────
+
+def _safe_score(score: float) -> float:
+    """Clamp score to strictly open interval (0, 1) — never 0.0 or 1.0.
+    Applies epsilon guard BEFORE rounding to prevent e.g. round(0.99995, 4) → 1.0."""
+    epsilon = 1e-6
+    score = max(epsilon, min(1 - epsilon, float(score)))
+    score = min(score, 0.9999)  # pre-rounding guard
+    return round(score, 4)
+
+
 # ─── App ─────────────────────────────────────────────────────────────────────
 
 app = FastAPI(
@@ -148,7 +160,11 @@ def grade():
     """Run deterministic grader on current episode."""
     env = get_env()
     result = env.grade()
-    return result.model_dump()
+    data = result.model_dump()
+    # Clamp score to strictly open (0, 1) — Phase 2 fail-fast requirement
+    if "score" in data:
+        data["score"] = _safe_score(data["score"])
+    return data
 
 
 @app.post("/run")
@@ -179,11 +195,21 @@ def run_inference(req: RunRequest):
     step_logs  = [l for l in lines if l.startswith("[STEP]")]
     end_logs   = [l for l in lines if l.startswith("[END]")]
 
-    # Parse END for score summary
+    # Parse END for score summary — clamp scores to strictly open (0, 1)
     scores = []
     for el in end_logs:
         try:
-            scores.append(json.loads(el[6:]))
+            entry = json.loads(el[6:])
+            # Clamp top-level score field and per-reward values
+            if "score" in entry:
+                entry["score"] = _safe_score(entry["score"])
+            if "rewards" in entry and isinstance(entry["rewards"], list):
+                entry["rewards"] = [
+                    round(max(1e-6, min(1 - 1e-6, float(r))), 4)
+                    if 0.0 <= float(r) <= 1.0 else r
+                    for r in entry["rewards"]
+                ]
+            scores.append(entry)
         except Exception:
             pass
 

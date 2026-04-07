@@ -10,7 +10,10 @@ from environment.models import Task, TaskStatus, EpisodeResult
 
 def _clamp(score: float) -> float:
     """Strictly open interval (0, 1) — never returns 0.0 or 1.0."""
-    return round(max(0.001, min(0.999, score)), 4)
+    epsilon = 1e-6
+    score = max(epsilon, min(1 - epsilon, score))
+    score = min(score, 0.9999)  # guard before rounding to prevent 1.0
+    return round(score, 4)
 
 
 def _compute_deadline_rate(tasks: List[Task]) -> float:
@@ -54,7 +57,7 @@ def _escalation_response_score(tasks: List[Task], missed_deadlines: int) -> floa
     resolved = sum(1 for t in escalated if t.status == TaskStatus.COMPLETED)
     base = resolved / len(escalated)
     penalty = min(0.5, missed_deadlines * 0.1)
-    return max(0.05, base - penalty)
+    return max(0.001, base - penalty)
 
 
 # ─── GRADER 1: Easy ──────────────────────────────────────────────────────────

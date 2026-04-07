@@ -59,7 +59,9 @@ def log_start(task: str, env: str, model: str) -> None:
 def log_step(step: int, action: Any, reward: float,
              done: bool, error: Optional[str]) -> None:
     
-    safe_reward = max(-0.9999, min(0.9999, reward))
+    epsilon = 1e-6
+    safe_reward = max(-(1 - epsilon), min(1 - epsilon, reward))
+    safe_reward = min(safe_reward, 0.9999)  # guard before rounding
 
     payload = {
         "step":   step,
@@ -75,7 +77,9 @@ def log_step(step: int, action: Any, reward: float,
 def log_end(success: bool, steps: int, score: float,
             rewards: List[float]) -> None:
     
-    safe_score = max(0.0001, min(0.9999, score))
+    epsilon = 1e-6
+    safe_score = max(epsilon, min(1 - epsilon, score))
+    safe_score = min(safe_score, 0.9999)  # guard before rounding
 
     payload = {
         "success": success,
@@ -316,8 +320,10 @@ def run_episode(scenario: str, seed: int = 42,
 
         # Normalise score to [0,1]
         total_reward = sum(rewards)
+        epsilon = 1e-6
         score = total_reward / MAX_TOTAL_REWARD
-        score = max(0.0001, min(0.9999, score))
+        score = min(score, 0.9999)  # guard before clamp
+        score = max(epsilon, min(1 - epsilon, score))
         success = score >= SUCCESS_SCORE_THRESHOLD
 
     finally:
