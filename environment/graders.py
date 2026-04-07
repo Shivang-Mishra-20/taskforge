@@ -113,7 +113,7 @@ def grade_easy(
         + csat_score * 0.15
     ) - early_penalty
 
-    score = max(0.0, min(1.0, score))
+    score = max(0.001, min(0.999, score))
     details.update({
         "deadline_rate": deadline_rate,
         "weighted_completion": weighted_score,
@@ -196,7 +196,7 @@ def grade_medium(
         + weighted * 0.10
     ) - early_penalty
 
-    score = max(0.0, min(1.0, score))
+    score = max(0.001, min(0.999, score))
     details.update({
         "escalation_score": escalation_score,
         "weighted_completion": weighted,
@@ -298,7 +298,7 @@ def grade_hard(
         - early_penalty
     )
 
-    score = max(0.0, min(1.0, score))
+    score = max(0.001, min(0.999, score))
     details.update({
         "escalation_score": escalation_score,
         "customer_satisfaction": customer_satisfaction,
@@ -323,6 +323,11 @@ GRADERS = {
 }
 
 
+def _clamp(score: float) -> float:
+    """Clamp score to strictly open interval (0, 1) as required by Phase 2."""
+    return round(max(0.001, min(0.999, score)), 4)
+
+
 def grade_episode(
     scenario: str,
     tasks: List[Task],
@@ -332,10 +337,12 @@ def grade_episode(
     early_terminated: bool,
 ) -> EpisodeResult:
     grader = GRADERS.get(scenario, grade_easy)
-    return grader(
+    result = grader(
         tasks=tasks,
         customer_satisfaction=customer_satisfaction,
         missed_deadlines=missed_deadlines,
         episode_steps=episode_steps,
         early_terminated=early_terminated,
     )
+    result.score = _clamp(result.score)
+    return result
