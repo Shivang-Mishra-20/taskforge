@@ -58,24 +58,32 @@ def log_start(task: str, env: str, model: str) -> None:
 
 def log_step(step: int, action: Any, reward: float,
              done: bool, error: Optional[str]) -> None:
+    
+    safe_reward = max(-0.9999, min(0.9999, reward))
+
     payload = {
         "step":   step,
         "action": action,
-        "reward": round(reward, 4),
+        "reward": round(safe_reward, 4),
         "done":   done,
         "error":  error,
     }
+
     print(f"[STEP] {json.dumps(payload)}", flush=True)
 
 
 def log_end(success: bool, steps: int, score: float,
             rewards: List[float]) -> None:
+    
+    safe_score = max(0.0001, min(0.9999, score))
+
     payload = {
         "success": success,
         "steps":   steps,
-        "score":   round(score, 4),
+        "score":   round(safe_score, 4),
         "rewards": [round(r, 4) for r in rewards],
     }
+
     print(f"[END] {json.dumps(payload)}", flush=True)
 
 
@@ -308,7 +316,8 @@ def run_episode(scenario: str, seed: int = 42,
 
         # Normalise score to [0,1]
         total_reward = sum(rewards)
-        score   = min(max(total_reward / MAX_TOTAL_REWARD, 0.0), 1.0)
+        score = total_reward / MAX_TOTAL_REWARD
+        score = max(0.0001, min(0.9999, score))
         success = score >= SUCCESS_SCORE_THRESHOLD
 
     finally:

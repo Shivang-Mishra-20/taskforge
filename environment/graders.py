@@ -113,7 +113,7 @@ def grade_easy(
         + csat_score * 0.15
     ) - early_penalty
 
-    score = max(0.001, min(0.999, score))
+    score = max(0.0001, min(0.9999, score))
     details.update({
         "deadline_rate": deadline_rate,
         "weighted_completion": weighted_score,
@@ -196,7 +196,7 @@ def grade_medium(
         + weighted * 0.10
     ) - early_penalty
 
-    score = max(0.001, min(0.999, score))
+    score = max(0.0001, min(0.9999, score))
     details.update({
         "escalation_score": escalation_score,
         "weighted_completion": weighted,
@@ -298,7 +298,7 @@ def grade_hard(
         - early_penalty
     )
 
-    score = max(0.001, min(0.999, score))
+    score = max(0.0001, min(0.9999, score))
     details.update({
         "escalation_score": escalation_score,
         "customer_satisfaction": customer_satisfaction,

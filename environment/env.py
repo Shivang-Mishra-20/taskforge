@@ -175,7 +175,7 @@ class TaskForgeEnv:
         reward = Reward(
             value=max(-1.0, min(1.0, reward_val)),
             breakdown=breakdown,
-            normalized=max(0.0, min(1.0, (reward_val + 1.0) / 2.0)),
+            normalized = max(0.0001, min(0.9999, (reward_val + 1.0) / 2.0)),
         )
 
         new_obs = self._build_observation(dynamic_event=dynamic_event_desc)
