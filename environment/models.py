@@ -124,13 +124,13 @@ class RewardBreakdown(BaseModel):
 class Reward(BaseModel):
     value: float = Field(ge=-1.0, le=1.0)
     breakdown: RewardBreakdown
-    normalized: float = Field(ge=0.0, le=1.0, description="Normalized for graders [0,1]")
+    normalized: float = Field(gt=0.0, lt=1.0, description="Normalized for graders (0,1)")
 
 
 # ─── Episode Result ──────────────────────────────────────────────────────────
 
 class EpisodeResult(BaseModel):
     task_id: str
-    score: float = Field(ge=0.0, le=1.0)
+    score: float = Field(gt=0.0, lt=1.0)
     details: Dict[str, Any]
     passed: bool
