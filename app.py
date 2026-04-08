@@ -38,7 +38,7 @@ def _safe_score(score: float) -> float:
     epsilon = 1e-6
     score = max(epsilon, min(1 - epsilon, float(score)))
     score = min(score, 0.9999)  # pre-rounding guard
-    return round(score, 4)
+    return float(f"{score:.6f}")
 
 
 # ─── App ─────────────────────────────────────────────────────────────────────
@@ -205,10 +205,10 @@ def run_inference(req: RunRequest):
                 entry["score"] = _safe_score(entry["score"])
             if "rewards" in entry and isinstance(entry["rewards"], list):
                 entry["rewards"] = [
-                    round(max(1e-6, min(1 - 1e-6, float(r))), 4)
+                    float(f"{max(1e-6, min(1 - 1e-6, float(r))):.6f}")
                     if 0.0 <= float(r) <= 1.0 else r
                     for r in entry["rewards"]
-                ]
+                    ]
             scores.append(entry)
         except Exception:
             pass
