@@ -9,13 +9,15 @@ from environment.models import Task, TaskStatus, EpisodeResult
 
 
 def _clamp(score: float) -> float:
-    epsilon = 1e-4
+    epsilon = 1e-6
 
-    # Clamp FIRST
+    # Clamp strictly inside (0,1)
     score = max(epsilon, min(1 - epsilon, score))
-    score = float(f"{score:.6f}")
 
-    # Final strict guard
+    # ❌ REMOVE rounding completely
+    # DO NOT use float(f"...")
+
+    # Final safety guard
     if score <= 0.0:
         score = epsilon
     elif score >= 1.0:
