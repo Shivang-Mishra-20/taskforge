@@ -60,14 +60,14 @@ def log_step(step: int, action: Any, reward: float,
              done: bool, error: Optional[str]) -> None:
 
     safe_reward = (reward + 1.0) / 2.0
-    safe_reward = max(-0.9999, min(0.9999, reward))
+    safe_reward = max(0.001, min(0.999, safe_reward))
 
     payload = {
-        "step": step,
+        "step":   step,
         "action": action,
-        "reward": round(safe_reward, 4),
-        "done": done,
-        "error": error,
+        "reward": float(f"{safe_reward:.6f}"),
+        "done":   done,
+        "error":  error,
     }
 
     print(f"[STEP] {json.dumps(payload)}", flush=True)

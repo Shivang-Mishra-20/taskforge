@@ -13,45 +13,20 @@ Endpoints:
   POST /run           → run full inference episode, returns [START]/[STEP]/[END] log
 """
 
-import os
-import sys
-import json
-import subprocess
+import os, sys, json, subprocess
 from typing import Optional, Any, Dict
-
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import uvicorn
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
 from environment.env import TaskForgeEnv
 from environment.models import Action, ActionType
 
+app = FastAPI(title="Task Forge AI", description="Real-Time SaaS Operations RL Environment", version="1.0.0")
 
-# ─── Score safety ─────────────────────────────────────────────────────────────
-
-def _safe_score(score: float) -> float:
-    """Clamp score to strictly open interval (0, 1) — never 0.0 or 1.0.
-    Applies epsilon guard BEFORE rounding to prevent e.g. round(0.99995, 4) → 1.0."""
-    epsilon = 1e-6
-    score = max(epsilon, min(1 - epsilon, float(score)))
-    score = min(score, 0.9999)  # pre-rounding guard
-    return float(f"{score:.6f}")
-
-
-# ─── App ─────────────────────────────────────────────────────────────────────
-
-app = FastAPI(
-    title="Task Forge AI",
-    description="Real-Time SaaS Operations RL Environment — OpenEnv Compliant",
-    version="1.0.0",
-)
-
-# Single global env instance (stateful per-session)
 _env: Optional[TaskForgeEnv] = None
-
 
 def get_env() -> TaskForgeEnv:
     global _env
@@ -59,55 +34,78 @@ def get_env() -> TaskForgeEnv:
         _env = TaskForgeEnv(scenario="easy", seed=42)
     return _env
 
-
-# ─── Request models ───────────────────────────────────────────────────────────
-
 class ResetRequest(BaseModel):
     scenario: str = "easy"
     seed: int = 42
 
-
 class StepRequest(BaseModel):
-    action_type: str = "start_task"
-    task_id: str = "T001"
-    new_priority: Optional[int] = None
-
+    action: Dict[str, Any]
 
 class RunRequest(BaseModel):
     scenario: str = "easy"
     seed: int = 42
     max_steps: int = 200
 
+@app.get("/health")
+def health():
+    return {"status": "healthy"}
 
-# ─── Endpoints ───────────────────────────────────────────────────────────────
-
-@app.get("/")
-def root():
+@app.get("/metadata")
+def metadata():
     return {
-        "name":        "Task Forge AI",
-        "version":     "1.0.0",
-        "description": "SaaS Operations RL Environment — OpenEnv Compliant",
-        "scenarios":   ["easy", "medium", "hard"],
-        "endpoints": {
-            "health":  "GET  /health",
-            "reset":   "POST /reset  {scenario, seed}",
-            "step":    "POST /step   {action_type, task_id, new_priority}",
-            "state":   "GET  /state",
-            "grade":   "GET  /grade",
-            "run":     "POST /run    {scenario, seed, max_steps}",
+        "name": "Task Forge AI",
+        "description": "Real-Time SaaS Operations RL Environment where an agent manages bugs, escalations, deadlines and customer issues across an 8-hour workday.",
+        "version": "1.0.0",
+        "author": "CaptainMishra",
+    }
+
+@app.get("/schema")
+def schema():
+    return {
+        "action": {
+            "type": "object",
+            "properties": {
+                "action_type": {"type": "string", "enum": ["start_task","delegate_task","delay_task","drop_task","reprioritize"]},
+                "task_id": {"type": "string"},
+                "new_priority": {"type": "integer", "minimum": 1, "maximum": 5},
+            },
+            "required": ["action_type", "task_id"],
+        },
+        "observation": {
+            "type": "object",
+            "properties": {
+                "current_time": {"type": "number"},
+                "time_remaining": {"type": "number"},
+                "task_list": {"type": "array"},
+                "customer_satisfaction": {"type": "number"},
+                "team_capacity": {"type": "number"},
+                "active_escalations": {"type": "integer"},
+                "completed_tasks": {"type": "integer"},
+                "missed_deadlines": {"type": "integer"},
+                "cumulative_reward": {"type": "number"},
+                "episode_step": {"type": "integer"},
+            },
+        },
+        "state": {
+            "type": "object",
+            "properties": {
+                "scenario": {"type": "string"},
+                "current_time": {"type": "number"},
+                "done": {"type": "boolean"},
+            },
         },
     }
 
+@app.post("/mcp")
+def mcp(request: Dict[str, Any] = {}):
+    return {"jsonrpc": "2.0", "id": request.get("id", 1), "result": {"tools": []}}
 
-@app.get("/health")
-def health():
-    """HF Spaces ping endpoint — must return 200."""
-    return {"status": "ok", "env": "task-forge-ai"}
-
+@app.get("/")
+def root():
+    return {"name": "Task Forge AI", "version": "1.0.0", "description": "SaaS Operations RL Environment"}
 
 @app.post("/reset")
 def reset(req: Optional[ResetRequest] = None):
-    """Reset environment to initial state. Returns first observation."""
     global _env
     scenario = req.scenario if req else "easy"
     seed = req.seed if req else 42
@@ -115,121 +113,46 @@ def reset(req: Optional[ResetRequest] = None):
         scenario = "easy"
     _env = TaskForgeEnv(scenario=scenario, seed=seed)
     obs = _env.reset()
-    return {
-        "observation": obs.model_dump(),
-        "scenario": scenario,
-        "seed": seed,
-    }
-
+    return {"observation": obs.model_dump(), "reward": None, "done": False}
 
 @app.post("/step")
 def step(req: StepRequest):
-    """Execute one action. Returns observation, reward, done, info."""
     env = get_env()
+    action_data = req.action
     try:
         action = Action(
-            action_type=ActionType(req.action_type),
-            task_id=req.task_id,
-            new_priority=req.new_priority,
+            action_type=ActionType(action_data.get("action_type", "start_task")),
+            task_id=str(action_data.get("task_id", "")),
+            new_priority=action_data.get("new_priority"),
         )
     except ValueError as e:
         raise HTTPException(400, f"Invalid action: {e}")
-
     try:
         obs, reward, done, info = env.step(action)
     except RuntimeError as e:
         raise HTTPException(409, str(e))
-
-    return {
-        "observation": obs.model_dump(),
-        "reward":      reward.model_dump(),
-        "done":        done,
-        "info":        info,
-    }
-
+    return {"observation": obs.model_dump(), "reward": reward.value, "done": done}
 
 @app.get("/state")
 def state():
-    """Return full current environment state."""
-    env = get_env()
-    return env.state()
-
+    return get_env().state()
 
 @app.get("/grade")
 def grade():
-    """Run deterministic grader on current episode."""
-    env = get_env()
-    result = env.grade()
-    data = result.model_dump()
-    # Clamp score to strictly open (0, 1) — Phase 2 fail-fast requirement
-    if "score" in data:
-        data["score"] = _safe_score(data["score"])
-    return data
-
+    return get_env().grade().model_dump()
 
 @app.post("/run")
 def run_inference(req: RunRequest):
-    """
-    Run a complete inference episode using the built-in rule-based agent.
-    Returns structured log lines in [START]/[STEP]/[END] format.
-    """
-    if req.scenario not in ("easy", "medium", "hard", "all"):
-        raise HTTPException(400, "scenario must be easy/medium/hard/all")
-
-    args = [
-        sys.executable, "inference.py",
-        "--scenario", req.scenario,
-        "--seed",     str(req.seed),
-        "--max-steps", str(req.max_steps),
-    ]
-    result = subprocess.run(
-        args,
-        capture_output=True,
-        text=True,
-        cwd=os.path.dirname(os.path.abspath(__file__)),
-        timeout=1200,  # 20 min max
-    )
-
-    lines      = result.stdout.strip().split("\n")
-    start_logs = [l for l in lines if l.startswith("[START]")]
-    step_logs  = [l for l in lines if l.startswith("[STEP]")]
-    end_logs   = [l for l in lines if l.startswith("[END]")]
-
-    # Parse END for score summary — clamp scores to strictly open (0, 1)
+    args = [sys.executable, "inference.py", "--scenario", req.scenario, "--seed", str(req.seed), "--max-steps", str(req.max_steps)]
+    result = subprocess.run(args, capture_output=True, text=True, cwd=os.path.dirname(os.path.abspath(__file__)), timeout=1200)
+    lines = result.stdout.strip().split("\n")
     scores = []
-    for el in end_logs:
-        try:
-            entry = json.loads(el[6:])
-            # Clamp top-level score field and per-reward values
-            if "score" in entry:
-                entry["score"] = _safe_score(entry["score"])
-            if "rewards" in entry and isinstance(entry["rewards"], list):
-                entry["rewards"] = [
-                    float(f"{max(1e-6, min(1 - 1e-6, float(r))):.6f}")
-                    if 0.0 <= float(r) <= 1.0 else r
-                    for r in entry["rewards"]
-                    ]
-            scores.append(entry)
-        except Exception:
-            pass
-
-    return {
-        "stdout":      result.stdout,
-        "returncode":  result.returncode,
-        "start_count": len(start_logs),
-        "step_count":  len(step_logs),
-        "end_count":   len(end_logs),
-        "scores":      scores,
-    }
-
-
-# ─── Entry point ─────────────────────────────────────────────────────────────
+    for l in lines:
+        if l.startswith("[END]"):
+            try: scores.append(json.loads(l[6:]))
+            except: pass
+    return {"stdout": result.stdout, "returncode": result.returncode, "scores": scores}
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 7860))
-    uvicorn.run(
-        "app:app",
-        host="0.0.0.0",
-        port=port,
-        log_level="info",
-    )
+    uvicorn.run("app:app", host="0.0.0.0", port=port, log_level="info")

@@ -11,8 +11,11 @@ from environment.models import Task, TaskStatus, EpisodeResult
 def _clamp(score: float) -> float:
     epsilon = 1e-4
 
+    # Clamp FIRST
     score = max(epsilon, min(1 - epsilon, score))
+    score = float(f"{score:.6f}")
 
+    # Final strict guard
     if score <= 0.0:
         score = epsilon
     elif score >= 1.0:
