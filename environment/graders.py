@@ -9,11 +9,27 @@ from environment.models import Task, TaskStatus, EpisodeResult
 
 
 def _clamp(score: float) -> float:
-    """Strictly open interval (0, 1) — never returns 0.0 or 1.0."""
-    epsilon = 1e-6
+    epsilon = 1e-4
+
+    # HARD clamp BEFORE everything (handles negatives)
+    if score <= 0:
+        return epsilon
+    if score >= 1:
+        return 1 - epsilon
+
+    # Normal clamp
     score = max(epsilon, min(1 - epsilon, score))
-    score = min(score, 0.9999)  # guard before rounding to prevent 1.0
-    return round(score, 4)
+
+    # Round
+    score = round(score, 4)
+
+    # Final guard
+    if score <= 0.0:
+        score = epsilon
+    elif score >= 1.0:
+        score = 1 - epsilon
+
+    return score
 
 
 def _compute_deadline_rate(tasks: List[Task]) -> float:
